@@ -26,7 +26,7 @@ contract ERC20FacetTest is DiamondUtils {
         // Deploy the facets
         diamondCutFacet = new DiamondCutFacet();
         diamond = new Diamond(owner, address(diamondCutFacet));
-        erc20 = new ERC20("Test Token", "TEST", 18, initialSupply, owner);
+        erc20 = new ERC20("Test Token", "TEST", 18, initialSupply);
 
         // Add ERC20Facet
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);

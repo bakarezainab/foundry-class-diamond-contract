@@ -4,11 +4,10 @@ pragma solidity ^0.8.28;
 import "../interfaces/IERC20.sol";
 import "../interfaces/IERC721.sol";
 import "../interfaces/IERC1155.sol";
-
-import { AppStorage, StakeInfo, StakeType } from "../libraries/AppStorage.sol";
+import { LibAppStorage } from "../libraries/AppStorage.sol";
 
 contract Staking {
-    AppStorage internal s;
+    LibAppStorage.AppStorage internal s;
 
     error UnsupportedToken();
     error StakeMoreThan0();
@@ -24,14 +23,14 @@ contract Staking {
         address indexed user, 
         address tokenAddress, 
         uint256 tokenId, 
-        StakeType stakeType, 
+        LibAppStorage.StakeType stakeType, 
         uint256 amount
     );
     event TokenUnstaked(
         address indexed user, 
         address tokenAddress, 
         uint256 tokenId, 
-        StakeType stakeType, 
+        LibAppStorage.StakeType stakeType, 
         uint256 amount
     );
     event RewardPaid(address indexed user, uint256 reward);
@@ -56,7 +55,7 @@ contract Staking {
         address tokenAddress, 
         uint256 tokenId, 
         uint256 amount, 
-        StakeType stakeType
+        LibAppStorage.StakeType stakeType
     ) external {
         if (!s.supportedTokens[tokenAddress]) {
             revert UnsupportedToken();
@@ -69,7 +68,7 @@ contract Staking {
 
         _transferTokensIn(tokenAddress, tokenId, amount, stakeType);
 
-        StakeInfo memory newStake = StakeInfo({
+        LibAppStorage.StakeInfo memory newStake = LibAppStorage.StakeInfo({
             user: msg.sender,
             tokenAddress: tokenAddress,
             tokenId: tokenId,
@@ -93,7 +92,7 @@ contract Staking {
     ) external {
         _updateReward(msg.sender);
 
-        StakeInfo[] storage userStakes = s.userStakes[msg.sender];
+        LibAppStorage.StakeInfo[] storage userStakes = s.userStakes[msg.sender];
         bool found = false;
         uint256 stakeIndex;
 
@@ -146,19 +145,19 @@ contract Staking {
         address tokenAddress, 
         uint256 tokenId, 
         uint256 amount, 
-        StakeType stakeType
+        LibAppStorage.StakeType stakeType
     ) internal {
-        if (stakeType == StakeType.ERC20) {
+        if (stakeType == LibAppStorage.StakeType.ERC20) {
             if (tokenId != 0) {
                 revert Erc20DoNotUseTokenId();
             }
             IERC20(tokenAddress).transferFrom(msg.sender, address(this), amount);
-        } else if (stakeType == StakeType.ERC721) {
+        } else if (stakeType == LibAppStorage.StakeType.ERC721) {
             if (amount != 1) {
                 revert Erc721CanOnlyStake1Token();
             }
             IERC721(tokenAddress).transferFrom(msg.sender, address(this), tokenId);
-        } else if (stakeType == StakeType.ERC1155) {
+        } else if (stakeType == LibAppStorage.StakeType.ERC1155) {
             IERC1155(tokenAddress).safeTransferFrom(msg.sender, address(this), tokenId, amount, "");
         }
     }
@@ -167,13 +166,13 @@ contract Staking {
         address tokenAddress, 
         uint256 tokenId, 
         uint256 amount, 
-        StakeType stakeType
+        LibAppStorage.StakeType stakeType
     ) internal {
-        if (stakeType == StakeType.ERC20) {
+        if (stakeType == LibAppStorage.StakeType.ERC20) {
             IERC20(tokenAddress).transfer(msg.sender, amount);
-        } else if (stakeType == StakeType.ERC721) {
+        } else if (stakeType == LibAppStorage.StakeType.ERC721) {
             IERC721(tokenAddress).transferFrom(address(this), msg.sender, tokenId);
-        } else if (stakeType == StakeType.ERC1155) {
+        } else if (stakeType == LibAppStorage.StakeType.ERC1155) {
             IERC1155(tokenAddress).safeTransferFrom(address(this), msg.sender, tokenId, amount, "");
         }
     }
@@ -209,7 +208,7 @@ contract Staking {
         s.totalSupply += amount;
     }
 
-    function getStakedTokens(address user) external view returns (StakeInfo[] memory) {
+    function getStakedTokens(address user) external view returns (LibAppStorage.StakeInfo[] memory) {
         return s.userStakes[user];
     }
 

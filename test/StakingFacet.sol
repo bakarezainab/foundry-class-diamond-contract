@@ -7,6 +7,7 @@ import { Staking } from "../contracts/facets/StakingFacet.sol";
 import { ERC20 } from "../contracts/facets/ERC20Facet.sol";
 import { IERC20 } from "../contracts/interfaces/IERC20.sol";
 import { Diamond } from "../contracts/Diamond.sol";
+import { LibAppStorage } from "../contracts/libraries/AppStorage.sol";
 import "./helpers/DiamondUtils.sol";
 
 contract StakingFacetTest is DiamondUtils {
@@ -17,25 +18,21 @@ contract StakingFacetTest is DiamondUtils {
     address owner;
     address user1;
     address user2;
-    uint256 initialSupply;
+    uint256 totalSupply;
     uint256 stakingAmount;
-    uint256 constant APR = 1000; // 10% APR
-    uint256 constant MIN_LOCK = 7 days;
-    uint256 constant DECAY_RATE = 100; // 1% decay
-    uint256 constant PENALTY = 1000; // 10% penalty
 
     function setUp() public {
         owner = address(this);
         user1 = address(0x1234);
         user2 = address(0x5678);
-        initialSupply = 1000000 * 10**18; // 1 million tokens
+        totalSupply = 1000000 * 10**18; // 1 million tokens
         stakingAmount = 1000 * 10**18; // 1000 tokens
         
         // Deploy the facets
         diamondCutFacet = new DiamondCutFacet();
         diamond = new Diamond(owner, address(diamondCutFacet));
-        erc20 = new ERC20("Test Token", "TEST", 18, initialSupply, owner);
-        stakingFacet = new Staking(address(erc20), APR, MIN_LOCK, DECAY_RATE, PENALTY);
+        erc20 = new ERC20("Test Token", "TEST", 18, totalSupply);
+        stakingFacet = new Staking();
 
         // Add facets
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](2);
@@ -55,6 +52,10 @@ contract StakingFacetTest is DiamondUtils {
         // Transfer tokens to users for testing
         ERC20(address(diamond)).transfer(user1, stakingAmount);
         ERC20(address(diamond)).transfer(user2, stakingAmount);
+
+        // Add ERC20 token as supported token
+        vm.prank(owner);
+        Staking(address(diamond)).addSupportedToken(address(erc20));
     }
 
     function testStakeERC20() public {
@@ -64,7 +65,7 @@ contract StakingFacetTest is DiamondUtils {
         
         // Stake tokens
         vm.prank(user1);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
+        Staking(address(diamond)).stake(address(erc20), 0, stakingAmount, LibAppStorage.StakeType.ERC20);
         
         assertEq(IERC20(address(diamond)).balanceOf(address(diamond)), stakingAmount, "Diamond should hold staked tokens");
     }
@@ -74,29 +75,16 @@ contract StakingFacetTest is DiamondUtils {
         vm.prank(user1);
         ERC20(address(diamond)).approve(address(diamond), stakingAmount);
         vm.prank(user1);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
+        Staking(address(diamond)).stake(address(erc20), 0, stakingAmount, LibAppStorage.StakeType.ERC20);
         
-        // Wait for lock period
-        vm.warp(block.timestamp + MIN_LOCK);
+        // Wait for some time
+        vm.warp(block.timestamp + 30 days);
         
-        // Then withdraw
+        // Then unstake
         vm.prank(user1);
-        Staking(address(diamond)).withdrawERC20(stakingAmount);
+        Staking(address(diamond)).unstake(address(erc20), 0, stakingAmount);
         
         assertEq(IERC20(address(diamond)).balanceOf(user1), stakingAmount, "User should receive tokens back");
-    }
-
-    function testCannotWithdrawBeforeLockPeriod() public {
-        // First stake
-        vm.prank(user1);
-        ERC20(address(diamond)).approve(address(diamond), stakingAmount);
-        vm.prank(user1);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
-        
-        // Try to withdraw before lock period
-        vm.prank(user1);
-        vm.expectRevert("Lock duration not met");
-        Staking(address(diamond)).withdrawERC20(stakingAmount);
     }
 
     function testRewards() public {
@@ -104,10 +92,13 @@ contract StakingFacetTest is DiamondUtils {
         vm.prank(user1);
         ERC20(address(diamond)).approve(address(diamond), stakingAmount);
         vm.prank(user1);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
+        Staking(address(diamond)).stake(address(erc20), 0, stakingAmount, LibAppStorage.StakeType.ERC20);
         
         // Simulate time passing
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 365 days);
+        
+        uint256 pendingRewards = Staking(address(diamond)).getPendingRewards(user1);
+        assertTrue(pendingRewards > 0, "Should have accrued rewards");
         
         // Claim rewards
         vm.prank(user1);
@@ -119,14 +110,21 @@ contract StakingFacetTest is DiamondUtils {
         vm.prank(user1);
         ERC20(address(diamond)).approve(address(diamond), stakingAmount);
         vm.prank(user1);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
+        Staking(address(diamond)).stake(address(erc20), 0, stakingAmount, LibAppStorage.StakeType.ERC20);
         
-        // User 2 stakes
+        // User 2 stakes double amount
         vm.prank(user2);
-        ERC20(address(diamond)).approve(address(diamond), stakingAmount);
+        ERC20(address(diamond)).approve(address(diamond), stakingAmount * 2);
         vm.prank(user2);
-        Staking(address(diamond)).stakeERC20(address(erc20), stakingAmount);
+        Staking(address(diamond)).stake(address(erc20), 0, stakingAmount * 2, LibAppStorage.StakeType.ERC20);
         
-        assertEq(IERC20(address(diamond)).balanceOf(address(diamond)), stakingAmount * 2, "Diamond should hold all staked tokens");
+        // Move time forward
+        vm.warp(block.timestamp + 365 days);
+        
+        // Check rewards ratio (User2 should have ~2x User1's rewards)
+        uint256 user1Rewards = Staking(address(diamond)).getPendingRewards(user1);
+        uint256 user2Rewards = Staking(address(diamond)).getPendingRewards(user2);
+        
+        assertApproxEqRel(user2Rewards, user1Rewards * 2, 0.01e18); // 1% tolerance
     }
 }

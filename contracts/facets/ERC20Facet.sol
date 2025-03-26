@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.28;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-import "../libraries/AppStorage.sol";
+import { LibAppStorage } from "../libraries/AppStorage.sol";
 
 contract ERC20 {
 
-    AppStorage internal s;
+    LibAppStorage.AppStorage internal s;
     
     // string public name;
     // string public symbol;
@@ -22,16 +22,18 @@ contract ERC20 {
     error OnlyOwnerAllowed();
     error InvalidAmount();
 
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
     event Minted(address indexed _to, uint256 _value);
 
-    constructor (string memory _name, string memory _symbol, uint8 _decimals, uint256 _totalSupply) {
+    constructor (string memory name_, string memory symbol_, uint8 decimals_, uint256 totalSupply_) {
 
-        s.name =_name; 
-        s.symbol = _symbol;
-        s.decimals = _decimals;
-        s.totalSupply = _totalSupply;
+        s.name = name_; 
+        s.symbol = symbol_;
+        s.decimals = decimals_;
+        s.totalSupply = totalSupply_;
+        s.balances[msg.sender] = totalSupply_;
+        s.owner = msg.sender;
                
         
         }
