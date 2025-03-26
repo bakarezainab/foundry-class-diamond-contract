@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
 import { IDiamondCut } from "../contracts/interfaces/IDiamondCut.sol";
 import { DiamondCutFacet } from "../contracts/facets/DiamondCutFacet.sol";
+import { DiamondLoupeFacet } from "../contracts/facets/DiamondLoupeFacet.sol";
+import { OwnershipFacet } from "../contracts/facets/OwnershipFacet.sol";
 import { Staking } from "../contracts/facets/StakingFacet.sol";
 import { ERC20 } from "../contracts/facets/ERC20Facet.sol";
 import { IERC20 } from "../contracts/interfaces/IERC20.sol";
@@ -13,6 +15,8 @@ import "./helpers/DiamondUtils.sol";
 contract StakingFacetTest is DiamondUtils {
     Diamond diamond;
     DiamondCutFacet diamondCutFacet;
+    DiamondLoupeFacet diamondLoupeFacet;
+    OwnershipFacet ownershipFacet;
     Staking stakingFacet;
     ERC20 erc20;
     address owner;
@@ -28,25 +32,46 @@ contract StakingFacetTest is DiamondUtils {
         totalSupply = 1000000 * 10**18; // 1 million tokens
         stakingAmount = 1000 * 10**18; // 1000 tokens
         
-        // Deploy the facets
+        // Deploy all facets
         diamondCutFacet = new DiamondCutFacet();
+        diamondLoupeFacet = new DiamondLoupeFacet();
+        ownershipFacet = new OwnershipFacet();
         diamond = new Diamond(owner, address(diamondCutFacet));
         erc20 = new ERC20("Test Token", "TEST", 18, totalSupply);
         stakingFacet = new Staking();
 
-        // Add facets
-        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](2);
+        // Add all facets
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](4);
+        
+        // Add DiamondLoupeFacet
         cut[0] = IDiamondCut.FacetCut({
+            facetAddress: address(diamondLoupeFacet),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: generateSelectors("DiamondLoupeFacet")
+        });
+
+        // Add OwnershipFacet
+        cut[1] = IDiamondCut.FacetCut({
+            facetAddress: address(ownershipFacet),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: generateSelectors("OwnershipFacet")
+        });
+
+        // Add ERC20 facet
+        cut[2] = IDiamondCut.FacetCut({
             facetAddress: address(erc20),
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: generateSelectors("ERC20")
+            functionSelectors: generateSelectors("ERC20Facet")
         });
-        cut[1] = IDiamondCut.FacetCut({
+
+        // Add Staking facet
+        cut[3] = IDiamondCut.FacetCut({
             facetAddress: address(stakingFacet),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: generateSelectors("StakingFacet")
         });
 
+        // Execute diamond cut
         IDiamondCut(address(diamond)).diamondCut(cut, address(0), "");
 
         // Transfer tokens to users for testing
